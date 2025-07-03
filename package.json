@@ -8,7 +8,8 @@
     "dev": "vite",
     "build": "vite build",
     "lint": "eslint .",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "deploy:oracle": "chmod +x deploy-oracle.sh && ./deploy-oracle.sh"
   },
   "keywords": [
     "video",
@@ -18,7 +19,8 @@
     "mkv",
     "react",
     "typescript",
-    "vite"
+    "vite",
+    "oracle-cloud"
   ],
   "author": "VideoStream Pro",
   "license": "MIT",

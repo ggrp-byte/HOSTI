@@ -1,0 +1,98 @@
+#cloud-config
+package_update: true
+package_upgrade: true
+
+packages:
+  - nginx
+  - certbot
+  - python3-certbot-nginx
+  - nodejs
+  - npm
+  - git
+  - firewalld
+
+write_files:
+  - path: /etc/nginx/conf.d/videostream.conf
+    content: |
+      server {
+          listen 80;
+          server_name _;
+          root /var/www/videostream-pro;
+          index index.html;
+          
+          # Gzip compression
+          gzip on;
+          gzip_vary on;
+          gzip_min_length 1024;
+          gzip_proxied any;
+          gzip_comp_level 6;
+          gzip_types
+              text/plain
+              text/css
+              text/xml
+              text/javascript
+              application/json
+              application/javascript
+              application/xml+rss
+              application/atom+xml
+              image/svg+xml;
+          
+          # Security headers
+          add_header X-Frame-Options "SAMEORIGIN" always;
+          add_header X-XSS-Protection "1; mode=block" always;
+          add_header X-Content-Type-Options "nosniff" always;
+          add_header Referrer-Policy "no-referrer-when-downgrade" always;
+          add_header Content-Security-Policy "default-src 'self' http: https: data: blob: 'unsafe-inline'" always;
+          
+          # Handle client-side routing
+          location / {
+              try_files $uri $uri/ /index.html;
+          }
+          
+          # Cache static assets
+          location ~* \.(js|css|png|jpg|jpeg|gif|ico|svg|woff|woff2|ttf|eot)$ {
+              expires 1y;
+              add_header Cache-Control "public, immutable";
+          }
+          
+          # Handle large file uploads
+          client_max_body_size 32G;
+          client_body_timeout 300s;
+          client_header_timeout 300s;
+      }
+  
+  - path: /var/www/videostream-pro/.env
+    content: |
+      VITE_SUPABASE_URL=${supabase_url}
+      VITE_SUPABASE_ANON_KEY=${supabase_key}
+
+runcmd:
+  # Configure firewall
+  - systemctl enable firewalld
+  - systemctl start firewalld
+  - firewall-cmd --permanent --add-service=http
+  - firewall-cmd --permanent --add-service=https
+  - firewall-cmd --permanent --add-service=ssh
+  - firewall-cmd --reload
+  
+  # Create web directory
+  - mkdir -p /var/www/videostream-pro
+  - chown -R nginx:nginx /var/www/videostream-pro
+  
+  # Clone and build the application
+  - cd /tmp
+  - git clone https://github.com/your-username/videostream-pro.git
+  - cd videostream-pro
+  - npm install
+  - npm run build
+  - cp -r dist/* /var/www/videostream-pro/
+  - chown -R nginx:nginx /var/www/videostream-pro
+  
+  # Configure and start nginx
+  - systemctl enable nginx
+  - systemctl start nginx
+  
+  # Setup automatic SSL renewal
+  - echo "0 12 * * * /usr/bin/certbot renew --quiet" | crontab -
+
+final_message: "VideoStream Pro server is ready! Access it via the public IP address."
