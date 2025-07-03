@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react'
 import { Film, Search, Copy, Check, AlertCircle, Download, Share2, Cloud, RefreshCw } from 'lucide-react'
 import { VideoUploader } from './components/VideoUploader'
 import { VideoGrid } from './components/VideoGrid'
+import { BackendStatus } from './components/BackendStatus'
 import { useVideos } from './hooks/useVideos'
 import type { Database } from './lib/supabase'
 
@@ -19,6 +20,7 @@ function App() {
   const [uploadError, setUploadError] = useState<string | null>(null)
   const [sharedVideoNotFound, setSharedVideoNotFound] = useState(false)
   const [currentFile, setCurrentFile] = useState<File | null>(null)
+  const [backendStatus, setBackendStatus] = useState({ database: false, storage: false })
 
   useEffect(() => {
     // Check if there's a shared video in URL
@@ -41,6 +43,12 @@ function App() {
   }, [getVideoByShareToken])
 
   const handleUpload = async (file: File) => {
+    // Check backend status before upload
+    if (!backendStatus.database || !backendStatus.storage) {
+      setUploadError('Backend nie jest dostępny. Sprawdź status połączenia.')
+      return
+    }
+
     try {
       setUploading(true)
       setUploadProgress(0)
@@ -151,6 +159,9 @@ function App() {
       </header>
 
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+        {/* Backend Status */}
+        <BackendStatus onStatusChange={setBackendStatus} />
+
         {/* Shared Video Not Found Error */}
         {sharedVideoNotFound && (
           <div className="mb-6 p-4 bg-yellow-500/10 border border-yellow-500/20 rounded-lg flex items-center space-x-3">

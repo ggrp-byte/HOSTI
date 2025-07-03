@@ -16,7 +16,7 @@ provider "oci" {
   region           = var.region
 }
 
-# Variables
+# Variables - POPRAWIONE DANE
 variable "tenancy_ocid" {
   description = "OCID of the tenancy"
   type        = string
@@ -47,6 +47,7 @@ variable "region" {
   default     = "us-chicago-1"
 }
 
+# POPRAWIONY COMPARTMENT OCID - używamy tenancy jako compartment
 variable "compartment_ocid" {
   description = "OCID of the compartment"
   type        = string
@@ -60,7 +61,7 @@ data "oci_identity_availability_domains" "ads" {
 
 # Get latest Oracle Linux image
 data "oci_core_images" "ol8" {
-  compartment_id           = var.tenancy_ocid
+  compartment_id           = var.compartment_ocid
   operating_system         = "Oracle Linux"
   operating_system_version = "8"
   shape                    = "VM.Standard.E2.1.Micro"
@@ -70,12 +71,12 @@ data "oci_core_images" "ol8" {
 
 # Get Object Storage namespace
 data "oci_objectstorage_namespace" "ns" {
-  compartment_id = var.tenancy_ocid
+  compartment_id = var.compartment_ocid
 }
 
 # Create VCN
 resource "oci_core_vcn" "videostream_vcn" {
-  compartment_id = var.tenancy_ocid
+  compartment_id = var.compartment_ocid
   display_name   = "videostream-pro-vcn"
   cidr_block     = "10.0.0.0/16"
   dns_label      = "videostreamvcn"
@@ -83,14 +84,14 @@ resource "oci_core_vcn" "videostream_vcn" {
 
 # Create Internet Gateway
 resource "oci_core_internet_gateway" "videostream_igw" {
-  compartment_id = var.tenancy_ocid
+  compartment_id = var.compartment_ocid
   vcn_id         = oci_core_vcn.videostream_vcn.id
   display_name   = "videostream-pro-igw"
 }
 
 # Create Route Table
 resource "oci_core_route_table" "videostream_rt" {
-  compartment_id = var.tenancy_ocid
+  compartment_id = var.compartment_ocid
   vcn_id         = oci_core_vcn.videostream_vcn.id
   display_name   = "videostream-pro-rt"
 
@@ -102,7 +103,7 @@ resource "oci_core_route_table" "videostream_rt" {
 
 # Create Security List
 resource "oci_core_security_list" "videostream_sl" {
-  compartment_id = var.tenancy_ocid
+  compartment_id = var.compartment_ocid
   vcn_id         = oci_core_vcn.videostream_vcn.id
   display_name   = "videostream-pro-sl"
 
@@ -148,7 +149,7 @@ resource "oci_core_security_list" "videostream_sl" {
 
 # Create Subnet
 resource "oci_core_subnet" "videostream_subnet" {
-  compartment_id      = var.tenancy_ocid
+  compartment_id      = var.compartment_ocid
   vcn_id              = oci_core_vcn.videostream_vcn.id
   display_name        = "videostream-pro-subnet"
   cidr_block          = "10.0.1.0/24"
@@ -160,7 +161,7 @@ resource "oci_core_subnet" "videostream_subnet" {
 
 # Create Object Storage Bucket
 resource "oci_objectstorage_bucket" "videostream_bucket" {
-  compartment_id = var.tenancy_ocid
+  compartment_id = var.compartment_ocid
   name           = "videostream-pro-storage"
   namespace      = data.oci_objectstorage_namespace.ns.namespace
   
@@ -176,7 +177,7 @@ resource "oci_objectstorage_bucket" "videostream_bucket" {
 # Create Compute Instance
 resource "oci_core_instance" "videostream_instance" {
   availability_domain = data.oci_identity_availability_domains.ads.availability_domains[0].name
-  compartment_id      = var.tenancy_ocid
+  compartment_id      = var.compartment_ocid
   display_name        = "videostream-pro-server"
   shape               = "VM.Standard.E2.1.Micro"
 
@@ -225,4 +226,15 @@ output "bucket_namespace" {
 output "website_url" {
   description = "URL to access the website"
   value       = "http://${oci_core_instance.videostream_instance.public_ip}"
+}
+
+# Debug outputs
+output "debug_info" {
+  description = "Debug information"
+  value = {
+    tenancy_ocid     = var.tenancy_ocid
+    user_ocid        = var.user_ocid
+    compartment_ocid = var.compartment_ocid
+    region           = var.region
+  }
 }
