@@ -1,263 +1,121 @@
-import React, { useState, useEffect } from 'react';
-import { Upload, Play, Share2, Film, Search, Trash2, Download, Copy, Check, AlertCircle } from 'lucide-react';
+import React, { useState, useEffect } from 'react'
+import { Film, Search, Copy, Check, AlertCircle, Download, Share2, Cloud } from 'lucide-react'
+import { VideoUploader } from './components/VideoUploader'
+import { VideoGrid } from './components/VideoGrid'
+import { useVideos } from './hooks/useVideos'
+import type { Database } from './lib/supabase'
 
-interface VideoFile {
-  id: string;
-  name: string;
-  size: number;
-  type: string;
-  url: string;
-  thumbnail?: string;
-  uploadDate: string;
-}
+type Video = Database['public']['Tables']['videos']['Row']
 
 function App() {
-  const [videos, setVideos] = useState<VideoFile[]>([]);
-  const [uploading, setUploading] = useState(false);
-  const [uploadProgress, setUploadProgress] = useState(0);
-  const [dragOver, setDragOver] = useState(false);
-  const [selectedVideo, setSelectedVideo] = useState<VideoFile | null>(null);
-  const [searchTerm, setSearchTerm] = useState('');
-  const [showShareModal, setShowShareModal] = useState(false);
-  const [shareUrl, setShareUrl] = useState('');
-  const [copied, setCopied] = useState(false);
-  const [uploadError, setUploadError] = useState<string | null>(null);
-  const [sharedVideoNotFound, setSharedVideoNotFound] = useState(false);
-
-  // Maximum file size: 30GB in bytes
-  const MAX_FILE_SIZE = 30 * 1024 * 1024 * 1024;
-
-  // Supported video formats including MKV
-  const SUPPORTED_FORMATS = [
-    'video/mp4',
-    'video/webm',
-    'video/ogg',
-    'video/avi',
-    'video/mov',
-    'video/wmv',
-    'video/flv',
-    'video/mkv',
-    'video/x-matroska', // Alternative MIME type for MKV
-    'video/3gpp',
-    'video/quicktime'
-  ];
+  const { videos, loading, error, uploadVideo, deleteVideo, getVideoByShareToken } = useVideos()
+  const [uploading, setUploading] = useState(false)
+  const [uploadProgress, setUploadProgress] = useState(0)
+  const [selectedVideo, setSelectedVideo] = useState<Video | null>(null)
+  const [searchTerm, setSearchTerm] = useState('')
+  const [showShareModal, setShowShareModal] = useState(false)
+  const [shareUrl, setShareUrl] = useState('')
+  const [copied, setCopied] = useState(false)
+  const [uploadError, setUploadError] = useState<string | null>(null)
+  const [sharedVideoNotFound, setSharedVideoNotFound] = useState(false)
 
   useEffect(() => {
-    const savedVideos = localStorage.getItem('uploadedVideos');
-    if (savedVideos) {
-      const parsedVideos = JSON.parse(savedVideos);
-      setVideos(parsedVideos);
-      
-      // Check if there's a shared video in URL
-      const urlParams = new URLSearchParams(window.location.search);
-      const sharedVideoId = urlParams.get('video');
-      
-      if (sharedVideoId) {
-        const sharedVideo = parsedVideos.find((v: VideoFile) => v.id === sharedVideoId);
-        if (sharedVideo) {
-          setSelectedVideo(sharedVideo);
+    // Check if there's a shared video in URL
+    const urlParams = new URLSearchParams(window.location.search)
+    const shareToken = urlParams.get('share')
+    
+    if (shareToken) {
+      getVideoByShareToken(shareToken).then(video => {
+        if (video) {
+          setSelectedVideo(video)
           // Clean URL without refreshing page
-          window.history.replaceState({}, document.title, window.location.pathname);
+          window.history.replaceState({}, document.title, window.location.pathname)
         } else {
-          setSharedVideoNotFound(true);
-          setTimeout(() => setSharedVideoNotFound(false), 5000);
+          setSharedVideoNotFound(true)
+          setTimeout(() => setSharedVideoNotFound(false), 5000)
+          window.history.replaceState({}, document.title, window.location.pathname)
         }
-      }
-    } else {
-      // Check for shared video even if no videos are saved yet
-      const urlParams = new URLSearchParams(window.location.search);
-      const sharedVideoId = urlParams.get('video');
-      
-      if (sharedVideoId) {
-        setSharedVideoNotFound(true);
-        setTimeout(() => setSharedVideoNotFound(false), 5000);
-        window.history.replaceState({}, document.title, window.location.pathname);
-      }
+      })
     }
-  }, []);
+  }, [getVideoByShareToken])
 
-  const saveVideos = (videoList: VideoFile[]) => {
-    localStorage.setItem('uploadedVideos', JSON.stringify(videoList));
-  };
-
-  const formatFileSize = (bytes: number) => {
-    if (bytes === 0) return '0 Bytes';
-    const k = 1024;
-    const sizes = ['Bytes', 'KB', 'MB', 'GB', 'TB'];
-    const i = Math.floor(Math.log(bytes) / Math.log(k));
-    return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
-  };
-
-  const isVideoFile = (file: File) => {
-    // Check MIME type
-    if (SUPPORTED_FORMATS.includes(file.type)) {
-      return true;
-    }
-    
-    // Check file extension for MKV and other formats (fallback)
-    const extension = file.name.toLowerCase().split('.').pop();
-    const supportedExtensions = ['mp4', 'webm', 'ogg', 'avi', 'mov', 'wmv', 'flv', 'mkv', '3gp', 'qt'];
-    return supportedExtensions.includes(extension || '');
-  };
-
-  const generateThumbnail = (videoFile: File): Promise<string> => {
-    return new Promise((resolve, reject) => {
-      const video = document.createElement('video');
-      const canvas = document.createElement('canvas');
-      const ctx = canvas.getContext('2d');
-      
-      video.addEventListener('loadeddata', () => {
-        canvas.width = 320;
-        canvas.height = 180;
-        video.currentTime = Math.min(1, video.duration * 0.1); // 10% into the video or 1 second
-      });
-
-      video.addEventListener('seeked', () => {
-        if (ctx) {
-          ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
-          resolve(canvas.toDataURL());
-        }
-      });
-
-      video.addEventListener('error', () => {
-        // If thumbnail generation fails, resolve with empty string
-        resolve('');
-      });
-
-      video.src = URL.createObjectURL(videoFile);
-    });
-  };
-
-  const validateFile = (file: File): string | null => {
-    if (!isVideoFile(file)) {
-      return 'Proszę wybrać prawidłowy plik wideo. Obsługiwane formaty: MP4, WebM, OGG, AVI, MOV, WMV, FLV, MKV, 3GP, QuickTime';
-    }
-    
-    if (file.size > MAX_FILE_SIZE) {
-      return `Rozmiar pliku przekracza maksymalny limit ${formatFileSize(MAX_FILE_SIZE)}`;
-    }
-    
-    return null;
-  };
-
-  const handleFileUpload = async (files: FileList) => {
-    const file = files[0];
-    if (!file) return;
-
-    const validationError = validateFile(file);
-    if (validationError) {
-      setUploadError(validationError);
-      setTimeout(() => setUploadError(null), 5000);
-      return;
-    }
-
-    setUploading(true);
-    setUploadProgress(0);
-    setUploadError(null);
-
-    // Simulate upload progress with more realistic timing for large files
-    const progressInterval = setInterval(() => {
-      setUploadProgress(prev => {
-        if (prev >= 90) {
-          clearInterval(progressInterval);
-          return prev;
-        }
-        // Slower progress for larger files
-        const increment = file.size > 1024 * 1024 * 1024 ? Math.random() * 5 : Math.random() * 15;
-        return prev + increment;
-      });
-    }, file.size > 1024 * 1024 * 1024 ? 500 : 200); // Slower updates for large files
-
+  const handleUpload = async (file: File) => {
     try {
-      const thumbnail = await generateThumbnail(file);
-      const videoUrl = URL.createObjectURL(file);
-      
-      const newVideo: VideoFile = {
-        id: Date.now().toString(),
-        name: file.name,
-        size: file.size,
-        type: file.type || 'video/unknown',
-        url: videoUrl,
-        thumbnail,
-        uploadDate: new Date().toISOString()
-      };
+      setUploading(true)
+      setUploadProgress(0)
+      setUploadError(null)
 
-      // Longer processing time for larger files
-      const processingTime = Math.min(3000, Math.max(1000, file.size / (1024 * 1024))); // 1-3 seconds based on file size
+      // Simulate progress for better UX
+      const progressInterval = setInterval(() => {
+        setUploadProgress(prev => {
+          if (prev >= 90) {
+            clearInterval(progressInterval)
+            return prev
+          }
+          return prev + Math.random() * 10
+        })
+      }, 500)
+
+      await uploadVideo(file)
+      
+      clearInterval(progressInterval)
+      setUploadProgress(100)
       
       setTimeout(() => {
-        setUploadProgress(100);
-        setTimeout(() => {
-          const updatedVideos = [...videos, newVideo];
-          setVideos(updatedVideos);
-          saveVideos(updatedVideos);
-          setUploading(false);
-          setUploadProgress(0);
-        }, 500);
-      }, processingTime);
-    } catch (error) {
-      setUploading(false);
-      setUploadProgress(0);
-      setUploadError('Błąd podczas przetwarzania wideo. Spróbuj ponownie.');
-      setTimeout(() => setUploadError(null), 5000);
+        setUploading(false)
+        setUploadProgress(0)
+      }, 1000)
+    } catch (err) {
+      setUploading(false)
+      setUploadProgress(0)
+      setUploadError(err instanceof Error ? err.message : 'Błąd podczas wgrywania')
+      setTimeout(() => setUploadError(null), 5000)
     }
-  };
+  }
 
-  const handleDragOver = (e: React.DragEvent) => {
-    e.preventDefault();
-    setDragOver(true);
-  };
-
-  const handleDragLeave = (e: React.DragEvent) => {
-    e.preventDefault();
-    setDragOver(false);
-  };
-
-  const handleDrop = (e: React.DragEvent) => {
-    e.preventDefault();
-    setDragOver(false);
-    if (e.dataTransfer.files) {
-      handleFileUpload(e.dataTransfer.files);
-    }
-  };
-
-  const generateShareUrl = (video: VideoFile) => {
-    const baseUrl = window.location.origin + window.location.pathname;
-    return `${baseUrl}?video=${video.id}`;
-  };
-
-  const handleShare = (video: VideoFile) => {
-    const url = generateShareUrl(video);
-    setShareUrl(url);
-    setShowShareModal(true);
-  };
+  const handleShare = (video: Video) => {
+    const baseUrl = window.location.origin + window.location.pathname
+    const url = `${baseUrl}?share=${video.share_token}`
+    setShareUrl(url)
+    setShowShareModal(true)
+  }
 
   const copyToClipboard = async () => {
     try {
-      await navigator.clipboard.writeText(shareUrl);
-      setCopied(true);
-      setTimeout(() => setCopied(false), 2000);
+      await navigator.clipboard.writeText(shareUrl)
+      setCopied(true)
+      setTimeout(() => setCopied(false), 2000)
     } catch (err) {
-      console.error('Failed to copy:', err);
+      console.error('Failed to copy:', err)
     }
-  };
+  }
 
-  const deleteVideo = (videoId: string) => {
-    const updatedVideos = videos.filter(v => v.id !== videoId);
-    setVideos(updatedVideos);
-    saveVideos(updatedVideos);
-    if (selectedVideo?.id === videoId) {
-      setSelectedVideo(null);
+  const handleDelete = async (videoId: string) => {
+    try {
+      await deleteVideo(videoId)
+      if (selectedVideo?.id === videoId) {
+        setSelectedVideo(null)
+      }
+    } catch (err) {
+      console.error('Error deleting video:', err)
     }
-  };
+  }
 
   const filteredVideos = videos.filter(video =>
     video.name.toLowerCase().includes(searchTerm.toLowerCase())
-  );
+  )
+
+  const formatFileSize = (bytes: number) => {
+    if (bytes === 0) return '0 Bytes'
+    const k = 1024
+    const sizes = ['Bytes', 'KB', 'MB', 'GB', 'TB']
+    const i = Math.floor(Math.log(bytes) / Math.log(k))
+    return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i]
+  }
 
   const getFileExtension = (filename: string) => {
-    return filename.split('.').pop()?.toUpperCase() || 'VIDEO';
-  };
+    return filename.split('.').pop()?.toUpperCase() || 'VIDEO'
+  }
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-purple-900 via-blue-900 to-indigo-900">
@@ -271,11 +129,14 @@ function App() {
               </div>
               <div>
                 <h1 className="text-2xl font-bold text-white">VideoStream Pro</h1>
-                <p className="text-sm text-gray-300">Wgraj i udostępnij filmy do 30GB • Wszystkie formaty obsługiwane</p>
+                <div className="flex items-center space-x-2">
+                  <Cloud className="h-4 w-4 text-green-400" />
+                  <p className="text-sm text-gray-300">Hosting w chmurze Oracle • Filmy do 30GB • Publiczne udostępnianie</p>
+                </div>
               </div>
             </div>
             <div className="text-right">
-              <p className="text-sm text-gray-300">{videos.length} filmów wgranych</p>
+              <p className="text-sm text-gray-300">{videos.length} filmów w chmurze</p>
               <p className="text-xs text-gray-400">
                 Łącznie: {formatFileSize(videos.reduce((sum, v) => sum + v.size, 0))}
               </p>
@@ -296,84 +157,21 @@ function App() {
           </div>
         )}
 
-        {/* Upload Zone */}
-        <div className="mb-8">
-          <div
-            className={`relative border-2 border-dashed rounded-2xl p-12 text-center transition-all duration-300 ${
-              dragOver
-                ? 'border-purple-400 bg-purple-500/10 scale-105'
-                : uploading
-                ? 'border-blue-400 bg-blue-500/10'
-                : 'border-gray-400 bg-white/5 hover:bg-white/10'
-            }`}
-            onDragOver={handleDragOver}
-            onDragLeave={handleDragLeave}
-            onDrop={handleDrop}
-          >
-            {uploading ? (
-              <div className="space-y-4">
-                <div className="w-16 h-16 mx-auto bg-gradient-to-r from-blue-500 to-purple-500 rounded-full flex items-center justify-center">
-                  <Upload className="h-8 w-8 text-white animate-bounce" />
-                </div>
-                <div>
-                  <h3 className="text-xl font-semibold text-white mb-2">Przetwarzanie filmu...</h3>
-                  <div className="w-full max-w-md mx-auto bg-gray-700 rounded-full h-3">
-                    <div
-                      className="bg-gradient-to-r from-purple-500 to-blue-500 h-3 rounded-full transition-all duration-300 ease-out"
-                      style={{ width: `${uploadProgress}%` }}
-                    ></div>
-                  </div>
-                  <p className="text-gray-300 mt-2">{Math.round(uploadProgress)}%</p>
-                  <p className="text-sm text-gray-400 mt-1">Duże pliki mogą wymagać więcej czasu</p>
-                </div>
-              </div>
-            ) : (
-              <div className="space-y-4">
-                <div className="w-20 h-20 mx-auto bg-gradient-to-r from-purple-500 to-blue-500 rounded-full flex items-center justify-center">
-                  <Upload className="h-10 w-10 text-white" />
-                </div>
-                <div>
-                  <h3 className="text-2xl font-bold text-white mb-2">
-                    {dragOver ? 'Upuść swój film tutaj!' : 'Wgraj swój film'}
-                  </h3>
-                  <p className="text-gray-300 mb-4">
-                    Przeciągnij i upuść plik wideo lub kliknij aby przeglądać
-                  </p>
-                  <input
-                    type="file"
-                    accept="video/*,.mkv"
-                    onChange={(e) => e.target.files && handleFileUpload(e.target.files)}
-                    className="hidden"
-                    id="video-upload"
-                  />
-                  <label
-                    htmlFor="video-upload"
-                    className="inline-flex items-center px-6 py-3 bg-gradient-to-r from-purple-600 to-blue-600 text-white font-semibold rounded-lg hover:from-purple-700 hover:to-blue-700 transition-all duration-200 cursor-pointer"
-                  >
-                    <Upload className="h-5 w-5 mr-2" />
-                    Wybierz plik
-                  </label>
-                </div>
-                <div className="space-y-2">
-                  <p className="text-sm text-gray-400">
-                    <strong>Obsługiwane formaty:</strong> MP4, WebM, OGG, AVI, MOV, WMV, FLV, <span className="text-purple-300 font-semibold">MKV</span>, 3GP, QuickTime
-                  </p>
-                  <p className="text-sm text-gray-400">
-                    <strong>Maksymalny rozmiar:</strong> 30GB na plik
-                  </p>
-                </div>
-              </div>
-            )}
+        {/* Error Display */}
+        {error && (
+          <div className="mb-6 p-4 bg-red-500/10 border border-red-500/20 rounded-lg flex items-center space-x-3">
+            <AlertCircle className="h-5 w-5 text-red-400 flex-shrink-0" />
+            <p className="text-red-300">{error}</p>
           </div>
-          
-          {/* Error Message */}
-          {uploadError && (
-            <div className="mt-4 p-4 bg-red-500/10 border border-red-500/20 rounded-lg flex items-center space-x-3">
-              <AlertCircle className="h-5 w-5 text-red-400 flex-shrink-0" />
-              <p className="text-red-300 text-sm">{uploadError}</p>
-            </div>
-          )}
-        </div>
+        )}
+
+        {/* Upload Zone */}
+        <VideoUploader
+          onUpload={handleUpload}
+          uploading={uploading}
+          uploadProgress={uploadProgress}
+          error={uploadError}
+        />
 
         {/* Search Bar */}
         {videos.length > 0 && (
@@ -382,7 +180,7 @@ function App() {
               <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-5 w-5 text-gray-400" />
               <input
                 type="text"
-                placeholder="Szukaj filmów..."
+                placeholder="Szukaj filmów w chmurze..."
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
                 className="w-full pl-10 pr-4 py-2 bg-white/10 border border-white/20 rounded-lg text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-transparent"
@@ -392,76 +190,16 @@ function App() {
         )}
 
         {/* Video Grid */}
-        {filteredVideos.length > 0 ? (
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
-            {filteredVideos.map((video) => (
-              <div
-                key={video.id}
-                className="bg-white/10 backdrop-blur-sm rounded-xl overflow-hidden hover:bg-white/15 transition-all duration-300 hover:scale-105 border border-white/10"
-              >
-                <div className="aspect-video bg-gray-800 relative group cursor-pointer">
-                  {video.thumbnail ? (
-                    <img
-                      src={video.thumbnail}
-                      alt={video.name}
-                      className="w-full h-full object-cover"
-                      onClick={() => setSelectedVideo(video)}
-                    />
-                  ) : (
-                    <div className="w-full h-full flex items-center justify-center">
-                      <div className="text-center">
-                        <Film className="h-12 w-12 text-gray-500 mx-auto mb-2" />
-                        <span className="text-xs text-gray-400 bg-gray-700 px-2 py-1 rounded">
-                          {getFileExtension(video.name)}
-                        </span>
-                      </div>
-                    </div>
-                  )}
-                  <div className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity duration-200 flex items-center justify-center">
-                    <button
-                      onClick={() => setSelectedVideo(video)}
-                      className="p-3 bg-white/20 backdrop-blur-sm rounded-full hover:bg-white/30 transition-colors"
-                    >
-                      <Play className="h-8 w-8 text-white fill-current" />
-                    </button>
-                  </div>
-                </div>
-                <div className="p-4">
-                  <h3 className="font-semibold text-white truncate mb-1" title={video.name}>
-                    {video.name}
-                  </h3>
-                  <div className="flex items-center justify-between text-sm text-gray-300 mb-3">
-                    <span>{formatFileSize(video.size)}</span>
-                    <span className="text-xs bg-gray-700 px-2 py-1 rounded">
-                      {getFileExtension(video.name)}
-                    </span>
-                  </div>
-                  <div className="flex space-x-2">
-                    <button
-                      onClick={() => handleShare(video)}
-                      className="flex-1 px-3 py-2 bg-purple-600 text-white text-sm font-medium rounded-lg hover:bg-purple-700 transition-colors flex items-center justify-center"
-                    >
-                      <Share2 className="h-4 w-4 mr-1" />
-                      Udostępnij
-                    </button>
-                    <button
-                      onClick={() => deleteVideo(video.id)}
-                      className="p-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors"
-                    >
-                      <Trash2 className="h-4 w-4" />
-                    </button>
-                  </div>
-                </div>
-              </div>
-            ))}
-          </div>
-        ) : videos.length === 0 ? (
-          <div className="text-center py-12">
-            <Film className="h-16 w-16 text-gray-500 mx-auto mb-4" />
-            <h3 className="text-xl font-semibold text-white mb-2">Brak filmów</h3>
-            <p className="text-gray-400">Wgraj swój pierwszy film aby rozpocząć</p>
-          </div>
-        ) : (
+        <VideoGrid
+          videos={filteredVideos}
+          onVideoSelect={setSelectedVideo}
+          onVideoShare={handleShare}
+          onVideoDelete={handleDelete}
+          loading={loading}
+        />
+
+        {/* No results */}
+        {!loading && videos.length > 0 && filteredVideos.length === 0 && (
           <div className="text-center py-12">
             <Search className="h-16 w-16 text-gray-500 mx-auto mb-4" />
             <h3 className="text-xl font-semibold text-white mb-2">Nie znaleziono filmów</h3>
@@ -484,6 +222,10 @@ function App() {
                   <span className="text-xs bg-gray-700 px-2 py-1 rounded">
                     {getFileExtension(selectedVideo.name)}
                   </span>
+                  <span className="text-xs bg-green-600 px-2 py-1 rounded flex items-center">
+                    <Cloud className="h-3 w-3 mr-1" />
+                    Chmura
+                  </span>
                 </div>
               </div>
               <button
@@ -495,7 +237,7 @@ function App() {
             </div>
             <div className="aspect-video">
               <video
-                src={selectedVideo.url}
+                src={selectedVideo.public_url}
                 controls
                 autoPlay
                 className="w-full h-full"
@@ -510,10 +252,10 @@ function App() {
                 className="flex-1 px-4 py-2 bg-purple-600 text-white font-medium rounded-lg hover:bg-purple-700 transition-colors flex items-center justify-center"
               >
                 <Share2 className="h-4 w-4 mr-2" />
-                Udostępnij film
+                Udostępnij publicznie
               </button>
               <a
-                href={selectedVideo.url}
+                href={selectedVideo.public_url}
                 download={selectedVideo.name}
                 className="px-4 py-2 bg-blue-600 text-white font-medium rounded-lg hover:bg-blue-700 transition-colors flex items-center"
               >
@@ -529,7 +271,7 @@ function App() {
       {showShareModal && (
         <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center p-4">
           <div className="bg-gray-900 rounded-2xl p-6 max-w-md w-full">
-            <h3 className="text-lg font-semibold text-white mb-4">Udostępnij film</h3>
+            <h3 className="text-lg font-semibold text-white mb-4">Udostępnij film publicznie</h3>
             <p className="text-gray-300 mb-4">Skopiuj ten link aby udostępnić swój film:</p>
             <div className="flex space-x-2 mb-4">
               <input
@@ -548,9 +290,9 @@ function App() {
             {copied && (
               <p className="text-green-400 text-sm mb-4">✓ Link skopiowany do schowka!</p>
             )}
-            <div className="bg-blue-500/10 border border-blue-500/20 rounded-lg p-3 mb-4">
-              <p className="text-blue-300 text-sm">
-                <strong>Ważne:</strong> Link działa tylko na tym urządzeniu/przeglądarce. Aby udostępniać publicznie, potrzebujesz hostingu w chmurze.
+            <div className="bg-green-500/10 border border-green-500/20 rounded-lg p-3 mb-4">
+              <p className="text-green-300 text-sm">
+                <strong>✓ Publiczny link:</strong> Działa na wszystkich urządzeniach i przeglądarkach na całym świecie!
               </p>
             </div>
             <div className="flex space-x-3">
@@ -565,7 +307,7 @@ function App() {
         </div>
       )}
     </div>
-  );
+  )
 }
 
-export default App;
+export default App

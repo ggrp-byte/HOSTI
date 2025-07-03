@@ -1,154 +1,202 @@
-# VideoStream Pro
+# VideoStream Pro - Oracle Cloud Edition
 
-A modern, production-ready video hosting platform that allows users to upload, stream, and share videos up to 30GB in size. Built with React, TypeScript, and Tailwind CSS.
+Nowoczesna platforma hostingu wideo w chmurze Oracle Cloud, umożliwiająca wgrywanie, strumieniowanie i publiczne udostępnianie filmów do 30GB.
 
-## 🚀 Features
+## 🚀 Funkcje
 
-- **Large File Support**: Upload videos up to 30GB
-- **Universal Format Support**: MP4, WebM, OGG, AVI, MOV, WMV, FLV, **MKV**, 3GP, QuickTime
-- **Drag & Drop Upload**: Intuitive file upload with progress tracking
-- **Video Streaming**: Stream videos directly without downloading
-- **Shareable Links**: Generate unique URLs for each video
-- **Responsive Design**: Works perfectly on desktop, tablet, and mobile
-- **Video Management**: Search, organize, and delete videos
-- **Thumbnail Generation**: Automatic video thumbnails
-- **Modern UI**: Beautiful gradient design with glass-morphism effects
+- **Hosting w chmurze Oracle**: Prawdziwe publiczne udostępnianie
+- **Duże pliki**: Obsługa filmów do 30GB
+- **Wszystkie formaty**: MP4, WebM, OGG, AVI, MOV, WMV, FLV, **MKV**, 3GP, QuickTime
+- **Publiczne linki**: Działają na wszystkich urządzeniach na świecie
+- **Drag & Drop**: Intuicyjne wgrywanie z paskiem postępu
+- **Streaming**: Odtwarzanie bez pobierania
+- **Responsywny design**: Działa na desktop, tablet i mobile
 
-## 🛠️ Tech Stack
+## 🛠️ Stos technologiczny
 
-- **Frontend**: React 18 + TypeScript
+- **Frontend**: React 18 + TypeScript + Vite
 - **Styling**: Tailwind CSS
-- **Icons**: Lucide React
-- **Build Tool**: Vite
-- **Storage**: Browser LocalStorage (for demo purposes)
+- **Backend**: Supabase (PostgreSQL + Storage)
+- **Hosting**: Oracle Cloud Infrastructure
+- **Ikony**: Lucide React
 
-## 📦 Installation
+## 📋 Wymagania Oracle Cloud
 
-1. Clone the repository:
+### Dane które musisz mi udostępnić:
+
+1. **Oracle Cloud Account**:
+   - Tenancy OCID
+   - User OCID
+   - Region (np. eu-frankfurt-1)
+   - Compartment OCID
+
+2. **API Keys**:
+   - Private Key (plik .pem)
+   - Public Key Fingerprint
+
+3. **Object Storage**:
+   - Namespace
+   - Bucket Name (zostanie utworzony automatycznie)
+
+4. **Compute Instance** (opcjonalne):
+   - Instance OCID (jeśli chcesz użyć istniejącej)
+   - Public IP
+
+### Konfiguracja Supabase (darmowa):
+
+1. **Utwórz konto na [supabase.com](https://supabase.com)**
+2. **Utwórz nowy projekt**
+3. **Skopiuj dane**:
+   - Project URL
+   - Anon Key
+
+## 🚀 Instalacja i wdrożenie
+
+### Krok 1: Klonowanie i instalacja
 ```bash
-git clone <your-repo-url>
+git clone <your-repo>
 cd videostream-pro
-```
-
-2. Install dependencies:
-```bash
 npm install
 ```
 
-3. Start the development server:
+### Krok 2: Konfiguracja środowiska
+```bash
+cp .env.example .env
+```
+
+Wypełnij plik `.env`:
+```env
+# Supabase
+VITE_SUPABASE_URL=https://your-project.supabase.co
+VITE_SUPABASE_ANON_KEY=your-anon-key
+
+# Oracle Cloud (opcjonalne - dla zaawansowanych funkcji)
+VITE_ORACLE_NAMESPACE=your-namespace
+VITE_ORACLE_BUCKET=video-storage
+```
+
+### Krok 3: Konfiguracja bazy danych
+```bash
+# Uruchom migracje w Supabase Dashboard > SQL Editor
+# Skopiuj zawartość z supabase/migrations/create_videos_table.sql
+```
+
+### Krok 4: Konfiguracja Storage w Supabase
+1. Przejdź do **Storage** w Supabase Dashboard
+2. Utwórz bucket o nazwie `videos`
+3. Ustaw **Public bucket** na `true`
+4. Dodaj politykę:
+```sql
+-- Pozwól wszystkim na upload
+CREATE POLICY "Allow public uploads" ON storage.objects
+FOR INSERT TO anon, authenticated
+WITH CHECK (bucket_id = 'videos');
+
+-- Pozwól wszystkim na pobieranie
+CREATE POLICY "Allow public downloads" ON storage.objects
+FOR SELECT TO anon, authenticated
+USING (bucket_id = 'videos');
+```
+
+### Krok 5: Uruchomienie lokalnie
 ```bash
 npm run dev
 ```
 
-4. Open your browser and navigate to `http://localhost:5173`
+### Krok 6: Wdrożenie na Oracle Cloud
 
-## 🚀 Deployment
+#### Opcja A: Netlify (najprostsze)
+1. Połącz repozytorium z Netlify
+2. Ustaw zmienne środowiskowe w Netlify
+3. Deploy automatyczny
 
-### GitHub Pages
-1. Build the project:
+#### Opcja B: Oracle Cloud Compute
 ```bash
+# Build aplikacji
 npm run build
+
+# Upload na Oracle Cloud Instance
+scp -r dist/* opc@your-oracle-ip:/var/www/html/
 ```
 
-2. Deploy the `dist` folder to GitHub Pages
+## 🔧 Konfiguracja Oracle Cloud
 
-### Netlify
-1. Connect your GitHub repository to Netlify
-2. Set build command: `npm run build`
-3. Set publish directory: `dist`
-
-### Vercel
-1. Connect your GitHub repository to Vercel
-2. Vercel will automatically detect the Vite configuration
-
-## ⚠️ Important Notes
-
-### Current Limitations
-- **Storage**: Currently uses browser LocalStorage for demo purposes
-- **File Persistence**: Files are stored locally and won't persist across devices
-- **Sharing**: Share links work only on the same device/browser
-
-### Production Deployment Requirements
-
-For a fully functional public video hosting platform, you'll need:
-
-1. **Backend Storage Service**:
-   - AWS S3 + CloudFront
-   - Google Cloud Storage
-   - Azure Blob Storage
-   - Or similar cloud storage solution
-
-2. **Database**:
-   - PostgreSQL, MySQL, or MongoDB
-   - For storing video metadata and user information
-
-3. **Video Processing**:
-   - FFmpeg for video transcoding
-   - Multiple resolution support
-   - Thumbnail generation service
-
-4. **CDN**:
-   - Content Delivery Network for global video streaming
-   - Reduced latency and improved performance
-
-## 🔧 Configuration
-
-### Supported Video Formats
-The application supports the following video formats:
-- MP4 (video/mp4)
-- WebM (video/webm)
-- OGG (video/ogg)
-- AVI (video/avi)
-- MOV (video/mov)
-- WMV (video/wmv)
-- FLV (video/flv)
-- **MKV (video/mkv, video/x-matroska)**
-- 3GP (video/3gpp)
-- QuickTime (video/quicktime)
-
-### File Size Limits
-- Maximum file size: 30GB per video
-- Configurable in `src/App.tsx` (MAX_FILE_SIZE constant)
-
-## 🎨 Customization
-
-### Colors
-The application uses a purple-blue gradient theme. You can customize colors in:
-- Tailwind CSS classes throughout the components
-- CSS custom properties for consistent theming
-
-### Upload Limits
-To change the upload limit, modify the `MAX_FILE_SIZE` constant in `src/App.tsx`:
-```typescript
-const MAX_FILE_SIZE = 30 * 1024 * 1024 * 1024; // 30GB in bytes
+### 1. Utwórz Compute Instance
+```bash
+# W Oracle Cloud Console:
+# Compute > Instances > Create Instance
+# Shape: VM.Standard.E2.1.Micro (Always Free)
+# Image: Oracle Linux 8
+# Networking: Assign public IP
 ```
 
-## 📱 Browser Compatibility
+### 2. Zainstaluj serwer web
+```bash
+sudo dnf install -y nginx
+sudo systemctl enable nginx
+sudo systemctl start nginx
+sudo firewall-cmd --permanent --add-service=http
+sudo firewall-cmd --permanent --add-service=https
+sudo firewall-cmd --reload
+```
 
-- Chrome 90+
-- Firefox 88+
-- Safari 14+
-- Edge 90+
+### 3. Konfiguracja SSL (opcjonalne)
+```bash
+sudo dnf install -y certbot python3-certbot-nginx
+sudo certbot --nginx -d your-domain.com
+```
 
-## 🤝 Contributing
+## 📊 Monitoring i analityka
 
-1. Fork the repository
-2. Create a feature branch: `git checkout -b feature/new-feature`
-3. Commit your changes: `git commit -am 'Add new feature'`
-4. Push to the branch: `git push origin feature/new-feature`
-5. Submit a pull request
+### Supabase Dashboard
+- Statystyki użycia storage
+- Logi zapytań do bazy
+- Metryki wydajności
 
-## 📄 License
+### Oracle Cloud Monitoring
+- Wykorzystanie compute
+- Transfer danych
+- Koszty
 
-This project is licensed under the MIT License - see the LICENSE file for details.
+## 💰 Koszty
 
-## 🆘 Support
+### Supabase (darmowy tier):
+- 500MB storage
+- 2GB transfer/miesiąc
+- 50,000 zapytań/miesiąc
 
-For support and questions:
-1. Check the GitHub Issues page
-2. Create a new issue with detailed information
-3. Include browser version and error messages
+### Oracle Cloud (Always Free):
+- 2x VM.Standard.E2.1.Micro
+- 200GB storage
+- 10TB transfer/miesiąc
 
----
+## 🔒 Bezpieczeństwo
 
-**Note**: This is a frontend-only demo application. For production use with public hosting and large file support, you'll need to implement a proper backend infrastructure with cloud storage services.
+- **RLS (Row Level Security)** w Supabase
+- **HTTPS** wymuszony
+- **CORS** skonfigurowany
+- **Rate limiting** w Supabase
+- **Backup** automatyczny w Oracle Cloud
+
+## 🚀 Skalowanie
+
+### Dla większego ruchu:
+1. **Upgrade Supabase** do płatnego planu
+2. **Oracle Cloud Load Balancer**
+3. **CDN** (Oracle Cloud CDN)
+4. **Multiple regions**
+
+## 📞 Wsparcie
+
+Aby skonfigurować Oracle Cloud, udostępnij mi:
+1. **Dane dostępowe Oracle Cloud** (bezpiecznie)
+2. **Preferowany region**
+3. **Domenę** (jeśli masz)
+
+Pomogę Ci skonfigurować kompletne rozwiązanie!
+
+## 🔗 Przydatne linki
+
+- [Oracle Cloud Free Tier](https://www.oracle.com/cloud/free/)
+- [Supabase Documentation](https://supabase.com/docs)
+- [Oracle Cloud Documentation](https://docs.oracle.com/en-us/iaas/)
