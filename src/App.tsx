@@ -22,6 +22,7 @@ function App() {
   const [shareUrl, setShareUrl] = useState('');
   const [copied, setCopied] = useState(false);
   const [uploadError, setUploadError] = useState<string | null>(null);
+  const [sharedVideoNotFound, setSharedVideoNotFound] = useState(false);
 
   // Maximum file size: 30GB in bytes
   const MAX_FILE_SIZE = 30 * 1024 * 1024 * 1024;
@@ -44,7 +45,34 @@ function App() {
   useEffect(() => {
     const savedVideos = localStorage.getItem('uploadedVideos');
     if (savedVideos) {
-      setVideos(JSON.parse(savedVideos));
+      const parsedVideos = JSON.parse(savedVideos);
+      setVideos(parsedVideos);
+      
+      // Check if there's a shared video in URL
+      const urlParams = new URLSearchParams(window.location.search);
+      const sharedVideoId = urlParams.get('video');
+      
+      if (sharedVideoId) {
+        const sharedVideo = parsedVideos.find((v: VideoFile) => v.id === sharedVideoId);
+        if (sharedVideo) {
+          setSelectedVideo(sharedVideo);
+          // Clean URL without refreshing page
+          window.history.replaceState({}, document.title, window.location.pathname);
+        } else {
+          setSharedVideoNotFound(true);
+          setTimeout(() => setSharedVideoNotFound(false), 5000);
+        }
+      }
+    } else {
+      // Check for shared video even if no videos are saved yet
+      const urlParams = new URLSearchParams(window.location.search);
+      const sharedVideoId = urlParams.get('video');
+      
+      if (sharedVideoId) {
+        setSharedVideoNotFound(true);
+        setTimeout(() => setSharedVideoNotFound(false), 5000);
+        window.history.replaceState({}, document.title, window.location.pathname);
+      }
     }
   }, []);
 
@@ -102,11 +130,11 @@ function App() {
 
   const validateFile = (file: File): string | null => {
     if (!isVideoFile(file)) {
-      return 'Please select a valid video file. Supported formats: MP4, WebM, OGG, AVI, MOV, WMV, FLV, MKV, 3GP, QuickTime';
+      return 'Proszę wybrać prawidłowy plik wideo. Obsługiwane formaty: MP4, WebM, OGG, AVI, MOV, WMV, FLV, MKV, 3GP, QuickTime';
     }
     
     if (file.size > MAX_FILE_SIZE) {
-      return `File size exceeds the maximum limit of ${formatFileSize(MAX_FILE_SIZE)}`;
+      return `Rozmiar pliku przekracza maksymalny limit ${formatFileSize(MAX_FILE_SIZE)}`;
     }
     
     return null;
@@ -170,7 +198,7 @@ function App() {
     } catch (error) {
       setUploading(false);
       setUploadProgress(0);
-      setUploadError('Error processing video. Please try again.');
+      setUploadError('Błąd podczas przetwarzania wideo. Spróbuj ponownie.');
       setTimeout(() => setUploadError(null), 5000);
     }
   };
@@ -243,13 +271,13 @@ function App() {
               </div>
               <div>
                 <h1 className="text-2xl font-bold text-white">VideoStream Pro</h1>
-                <p className="text-sm text-gray-300">Upload & Share Videos up to 30GB • All Formats Supported</p>
+                <p className="text-sm text-gray-300">Wgraj i udostępnij filmy do 30GB • Wszystkie formaty obsługiwane</p>
               </div>
             </div>
             <div className="text-right">
-              <p className="text-sm text-gray-300">{videos.length} videos uploaded</p>
+              <p className="text-sm text-gray-300">{videos.length} filmów wgranych</p>
               <p className="text-xs text-gray-400">
-                Total: {formatFileSize(videos.reduce((sum, v) => sum + v.size, 0))}
+                Łącznie: {formatFileSize(videos.reduce((sum, v) => sum + v.size, 0))}
               </p>
             </div>
           </div>
@@ -257,6 +285,17 @@ function App() {
       </header>
 
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+        {/* Shared Video Not Found Error */}
+        {sharedVideoNotFound && (
+          <div className="mb-6 p-4 bg-yellow-500/10 border border-yellow-500/20 rounded-lg flex items-center space-x-3">
+            <AlertCircle className="h-5 w-5 text-yellow-400 flex-shrink-0" />
+            <div>
+              <p className="text-yellow-300 font-medium">Film nie został znaleziony</p>
+              <p className="text-yellow-200 text-sm">Link może być nieprawidłowy lub film został usunięty.</p>
+            </div>
+          </div>
+        )}
+
         {/* Upload Zone */}
         <div className="mb-8">
           <div
@@ -277,7 +316,7 @@ function App() {
                   <Upload className="h-8 w-8 text-white animate-bounce" />
                 </div>
                 <div>
-                  <h3 className="text-xl font-semibold text-white mb-2">Processing Video...</h3>
+                  <h3 className="text-xl font-semibold text-white mb-2">Przetwarzanie filmu...</h3>
                   <div className="w-full max-w-md mx-auto bg-gray-700 rounded-full h-3">
                     <div
                       className="bg-gradient-to-r from-purple-500 to-blue-500 h-3 rounded-full transition-all duration-300 ease-out"
@@ -285,7 +324,7 @@ function App() {
                     ></div>
                   </div>
                   <p className="text-gray-300 mt-2">{Math.round(uploadProgress)}%</p>
-                  <p className="text-sm text-gray-400 mt-1">Large files may take longer to process</p>
+                  <p className="text-sm text-gray-400 mt-1">Duże pliki mogą wymagać więcej czasu</p>
                 </div>
               </div>
             ) : (
@@ -295,10 +334,10 @@ function App() {
                 </div>
                 <div>
                   <h3 className="text-2xl font-bold text-white mb-2">
-                    {dragOver ? 'Drop your video here!' : 'Upload Your Video'}
+                    {dragOver ? 'Upuść swój film tutaj!' : 'Wgraj swój film'}
                   </h3>
                   <p className="text-gray-300 mb-4">
-                    Drag and drop your video file or click to browse
+                    Przeciągnij i upuść plik wideo lub kliknij aby przeglądać
                   </p>
                   <input
                     type="file"
@@ -312,15 +351,15 @@ function App() {
                     className="inline-flex items-center px-6 py-3 bg-gradient-to-r from-purple-600 to-blue-600 text-white font-semibold rounded-lg hover:from-purple-700 hover:to-blue-700 transition-all duration-200 cursor-pointer"
                   >
                     <Upload className="h-5 w-5 mr-2" />
-                    Choose File
+                    Wybierz plik
                   </label>
                 </div>
                 <div className="space-y-2">
                   <p className="text-sm text-gray-400">
-                    <strong>Supported formats:</strong> MP4, WebM, OGG, AVI, MOV, WMV, FLV, <span className="text-purple-300 font-semibold">MKV</span>, 3GP, QuickTime
+                    <strong>Obsługiwane formaty:</strong> MP4, WebM, OGG, AVI, MOV, WMV, FLV, <span className="text-purple-300 font-semibold">MKV</span>, 3GP, QuickTime
                   </p>
                   <p className="text-sm text-gray-400">
-                    <strong>Maximum size:</strong> 30GB per file
+                    <strong>Maksymalny rozmiar:</strong> 30GB na plik
                   </p>
                 </div>
               </div>
@@ -343,7 +382,7 @@ function App() {
               <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-5 w-5 text-gray-400" />
               <input
                 type="text"
-                placeholder="Search videos..."
+                placeholder="Szukaj filmów..."
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
                 className="w-full pl-10 pr-4 py-2 bg-white/10 border border-white/20 rounded-lg text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-transparent"
@@ -403,7 +442,7 @@ function App() {
                       className="flex-1 px-3 py-2 bg-purple-600 text-white text-sm font-medium rounded-lg hover:bg-purple-700 transition-colors flex items-center justify-center"
                     >
                       <Share2 className="h-4 w-4 mr-1" />
-                      Share
+                      Udostępnij
                     </button>
                     <button
                       onClick={() => deleteVideo(video.id)}
@@ -419,14 +458,14 @@ function App() {
         ) : videos.length === 0 ? (
           <div className="text-center py-12">
             <Film className="h-16 w-16 text-gray-500 mx-auto mb-4" />
-            <h3 className="text-xl font-semibold text-white mb-2">No videos yet</h3>
-            <p className="text-gray-400">Upload your first video to get started</p>
+            <h3 className="text-xl font-semibold text-white mb-2">Brak filmów</h3>
+            <p className="text-gray-400">Wgraj swój pierwszy film aby rozpocząć</p>
           </div>
         ) : (
           <div className="text-center py-12">
             <Search className="h-16 w-16 text-gray-500 mx-auto mb-4" />
-            <h3 className="text-xl font-semibold text-white mb-2">No videos found</h3>
-            <p className="text-gray-400">Try adjusting your search term</p>
+            <h3 className="text-xl font-semibold text-white mb-2">Nie znaleziono filmów</h3>
+            <p className="text-gray-400">Spróbuj zmienić wyszukiwane hasło</p>
           </div>
         )}
       </div>
@@ -462,7 +501,7 @@ function App() {
                 className="w-full h-full"
                 preload="metadata"
               >
-                Your browser does not support the video tag.
+                Twoja przeglądarka nie obsługuje odtwarzania wideo.
               </video>
             </div>
             <div className="p-4 flex space-x-3">
@@ -471,7 +510,7 @@ function App() {
                 className="flex-1 px-4 py-2 bg-purple-600 text-white font-medium rounded-lg hover:bg-purple-700 transition-colors flex items-center justify-center"
               >
                 <Share2 className="h-4 w-4 mr-2" />
-                Share Video
+                Udostępnij film
               </button>
               <a
                 href={selectedVideo.url}
@@ -479,7 +518,7 @@ function App() {
                 className="px-4 py-2 bg-blue-600 text-white font-medium rounded-lg hover:bg-blue-700 transition-colors flex items-center"
               >
                 <Download className="h-4 w-4 mr-2" />
-                Download
+                Pobierz
               </a>
             </div>
           </div>
@@ -490,8 +529,8 @@ function App() {
       {showShareModal && (
         <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center p-4">
           <div className="bg-gray-900 rounded-2xl p-6 max-w-md w-full">
-            <h3 className="text-lg font-semibold text-white mb-4">Share Video</h3>
-            <p className="text-gray-300 mb-4">Copy this link to share your video:</p>
+            <h3 className="text-lg font-semibold text-white mb-4">Udostępnij film</h3>
+            <p className="text-gray-300 mb-4">Skopiuj ten link aby udostępnić swój film:</p>
             <div className="flex space-x-2 mb-4">
               <input
                 type="text"
@@ -507,14 +546,19 @@ function App() {
               </button>
             </div>
             {copied && (
-              <p className="text-green-400 text-sm mb-4">✓ Link copied to clipboard!</p>
+              <p className="text-green-400 text-sm mb-4">✓ Link skopiowany do schowka!</p>
             )}
+            <div className="bg-blue-500/10 border border-blue-500/20 rounded-lg p-3 mb-4">
+              <p className="text-blue-300 text-sm">
+                <strong>Ważne:</strong> Link działa tylko na tym urządzeniu/przeglądarce. Aby udostępniać publicznie, potrzebujesz hostingu w chmurze.
+              </p>
+            </div>
             <div className="flex space-x-3">
               <button
                 onClick={() => setShowShareModal(false)}
                 className="flex-1 px-4 py-2 bg-gray-700 text-white rounded-lg hover:bg-gray-600 transition-colors"
               >
-                Close
+                Zamknij
               </button>
             </div>
           </div>
