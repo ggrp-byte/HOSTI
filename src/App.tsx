@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react'
-import { Film, Search, Copy, Check, AlertCircle, Download, Share2, Cloud } from 'lucide-react'
+import { Film, Search, Copy, Check, AlertCircle, Download, Share2, Cloud, RefreshCw } from 'lucide-react'
 import { VideoUploader } from './components/VideoUploader'
 import { VideoGrid } from './components/VideoGrid'
 import { useVideos } from './hooks/useVideos'
@@ -18,6 +18,7 @@ function App() {
   const [copied, setCopied] = useState(false)
   const [uploadError, setUploadError] = useState<string | null>(null)
   const [sharedVideoNotFound, setSharedVideoNotFound] = useState(false)
+  const [currentFile, setCurrentFile] = useState<File | null>(null)
 
   useEffect(() => {
     // Check if there's a shared video in URL
@@ -44,33 +45,37 @@ function App() {
       setUploading(true)
       setUploadProgress(0)
       setUploadError(null)
+      setCurrentFile(file)
 
-      // Simulate progress for better UX
-      const progressInterval = setInterval(() => {
-        setUploadProgress(prev => {
-          if (prev >= 90) {
-            clearInterval(progressInterval)
-            return prev
-          }
-          return prev + Math.random() * 10
-        })
-      }, 500)
-
-      await uploadVideo(file)
-      
-      clearInterval(progressInterval)
-      setUploadProgress(100)
+      await uploadVideo(file, (progress) => {
+        setUploadProgress(progress)
+      })
       
       setTimeout(() => {
         setUploading(false)
         setUploadProgress(0)
+        setCurrentFile(null)
       }, 1000)
     } catch (err) {
       setUploading(false)
       setUploadProgress(0)
+      setCurrentFile(null)
       setUploadError(err instanceof Error ? err.message : 'Błąd podczas wgrywania')
-      setTimeout(() => setUploadError(null), 5000)
+      setTimeout(() => setUploadError(null), 10000)
     }
+  }
+
+  const retryUpload = () => {
+    if (currentFile) {
+      handleUpload(currentFile)
+    }
+  }
+
+  const cancelUpload = () => {
+    setUploading(false)
+    setUploadProgress(0)
+    setCurrentFile(null)
+    setUploadError(null)
   }
 
   const handleShare = (video: Video) => {
@@ -165,12 +170,42 @@ function App() {
           </div>
         )}
 
+        {/* Upload Error with Retry */}
+        {uploadError && (
+          <div className="mb-6 p-4 bg-red-500/10 border border-red-500/20 rounded-lg">
+            <div className="flex items-center space-x-3 mb-3">
+              <AlertCircle className="h-5 w-5 text-red-400 flex-shrink-0" />
+              <div className="flex-1">
+                <p className="text-red-300 font-medium">Błąd uploadu</p>
+                <p className="text-red-200 text-sm">{uploadError}</p>
+              </div>
+            </div>
+            {currentFile && (
+              <div className="flex space-x-3">
+                <button
+                  onClick={retryUpload}
+                  className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors flex items-center text-sm"
+                >
+                  <RefreshCw className="h-4 w-4 mr-2" />
+                  Spróbuj ponownie
+                </button>
+                <button
+                  onClick={cancelUpload}
+                  className="px-4 py-2 bg-gray-600 text-white rounded-lg hover:bg-gray-700 transition-colors text-sm"
+                >
+                  Anuluj
+                </button>
+              </div>
+            )}
+          </div>
+        )}
+
         {/* Upload Zone */}
         <VideoUploader
           onUpload={handleUpload}
           uploading={uploading}
           uploadProgress={uploadProgress}
-          error={uploadError}
+          error={null}
         />
 
         {/* Search Bar */}

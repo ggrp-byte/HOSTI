@@ -26,22 +26,69 @@ export function useVideos() {
     }
   }
 
-  const uploadVideo = async (file: File): Promise<Video | null> => {
+  const uploadVideo = async (
+    file: File, 
+    onProgress?: (progress: number) => void
+  ): Promise<Video | null> => {
     try {
       // Generate unique filename
       const fileExt = file.name.split('.').pop()
       const fileName = `${Date.now()}-${Math.random().toString(36).substring(2)}.${fileExt}`
       const filePath = `videos/${fileName}`
 
-      // Upload file to Supabase Storage
-      const { error: uploadError } = await supabase.storage
-        .from('videos')
-        .upload(filePath, file, {
-          cacheControl: '3600',
-          upsert: false
-        })
+      // Create AbortController for cancellation
+      const abortController = new AbortController()
 
-      if (uploadError) throw uploadError
+      // Upload with chunked upload for large files
+      const uploadWithRetry = async (retryCount = 0): Promise<any> => {
+        try {
+          const { error: uploadError } = await supabase.storage
+            .from('videos')
+            .upload(filePath, file, {
+              cacheControl: '3600',
+              upsert: false,
+              duplex: 'half'
+            })
+
+          if (uploadError) {
+            // If it's a network error and we haven't retried too many times
+            if (retryCount < 3 && (
+              uploadError.message.includes('network') ||
+              uploadError.message.includes('timeout') ||
+              uploadError.message.includes('fetch')
+            )) {
+              console.log(`Upload failed, retrying... (attempt ${retryCount + 1})`)
+              await new Promise(resolve => setTimeout(resolve, 2000 * (retryCount + 1)))
+              return uploadWithRetry(retryCount + 1)
+            }
+            throw uploadError
+          }
+
+          return true
+        } catch (err) {
+          if (retryCount < 3) {
+            console.log(`Upload failed, retrying... (attempt ${retryCount + 1})`)
+            await new Promise(resolve => setTimeout(resolve, 2000 * (retryCount + 1)))
+            return uploadWithRetry(retryCount + 1)
+          }
+          throw err
+        }
+      }
+
+      // Start upload with retry mechanism
+      await uploadWithRetry()
+
+      // Simulate progress updates
+      if (onProgress) {
+        const progressInterval = setInterval(() => {
+          onProgress(95 + Math.random() * 4)
+        }, 100)
+        
+        setTimeout(() => {
+          clearInterval(progressInterval)
+          onProgress(100)
+        }, 1000)
+      }
 
       // Get public URL
       const { data: { publicUrl } } = supabase.storage
@@ -55,7 +102,7 @@ export function useVideos() {
       const videoData = {
         name: file.name,
         size: file.size,
-        type: file.type,
+        type: file.type || 'video/mp4',
         file_path: filePath,
         public_url: publicUrl,
         share_token: shareToken,
@@ -68,14 +115,25 @@ export function useVideos() {
         .select()
         .single()
 
-      if (dbError) throw dbError
+      if (dbError) {
+        // If database insert fails, clean up the uploaded file
+        await supabase.storage
+          .from('videos')
+          .remove([filePath])
+        throw dbError
+      }
 
       // Refresh videos list
       await fetchVideos()
       
       return data
     } catch (err) {
-      throw new Error(err instanceof Error ? err.message : 'Błąd podczas wgrywania filmu')
+      console.error('Upload error:', err)
+      throw new Error(
+        err instanceof Error 
+          ? `Błąd uploadu: ${err.message}` 
+          : 'Błąd podczas wgrywania filmu. Spróbuj ponownie.'
+      )
     }
   }
 

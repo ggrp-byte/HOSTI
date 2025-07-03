@@ -1,5 +1,5 @@
 import React, { useState } from 'react'
-import { Upload, AlertCircle } from 'lucide-react'
+import { Upload, AlertCircle, Wifi, WifiOff } from 'lucide-react'
 
 interface VideoUploaderProps {
   onUpload: (file: File) => Promise<void>
@@ -26,6 +26,25 @@ const SUPPORTED_FORMATS = [
 
 export function VideoUploader({ onUpload, uploading, uploadProgress, error }: VideoUploaderProps) {
   const [dragOver, setDragOver] = useState(false)
+  const [networkStatus, setNetworkStatus] = useState<'online' | 'offline' | 'slow'>('online')
+
+  React.useEffect(() => {
+    const handleOnline = () => setNetworkStatus('online')
+    const handleOffline = () => setNetworkStatus('offline')
+    
+    window.addEventListener('online', handleOnline)
+    window.addEventListener('offline', handleOffline)
+    
+    // Check initial network status
+    if (!navigator.onLine) {
+      setNetworkStatus('offline')
+    }
+    
+    return () => {
+      window.removeEventListener('online', handleOnline)
+      window.removeEventListener('offline', handleOffline)
+    }
+  }, [])
 
   const isVideoFile = (file: File) => {
     if (SUPPORTED_FORMATS.includes(file.type)) {
@@ -58,6 +77,11 @@ export function VideoUploader({ onUpload, uploading, uploadProgress, error }: Vi
       return
     }
 
+    if (networkStatus === 'offline') {
+      alert('Brak połączenia z internetem. Sprawdź połączenie i spróbuj ponownie.')
+      return
+    }
+
     await onUpload(file)
   }
 
@@ -87,14 +111,45 @@ export function VideoUploader({ onUpload, uploading, uploadProgress, error }: Vi
     return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i]
   }
 
+  const getProgressColor = () => {
+    if (uploadProgress < 50) return 'from-blue-500 to-purple-500'
+    if (uploadProgress < 90) return 'from-purple-500 to-pink-500'
+    if (uploadProgress < 95) return 'from-yellow-500 to-orange-500'
+    return 'from-green-500 to-emerald-500'
+  }
+
+  const getProgressMessage = () => {
+    if (uploadProgress < 30) return 'Przygotowywanie pliku...'
+    if (uploadProgress < 60) return 'Wgrywanie do chmury...'
+    if (uploadProgress < 90) return 'Przetwarzanie...'
+    if (uploadProgress < 95) return 'Finalizowanie...'
+    if (uploadProgress < 100) return 'Prawie gotowe...'
+    return 'Zakończono!'
+  }
+
   return (
     <div className="mb-8">
+      {/* Network Status Indicator */}
+      {networkStatus !== 'online' && (
+        <div className="mb-4 p-3 bg-red-500/10 border border-red-500/20 rounded-lg flex items-center space-x-3">
+          <WifiOff className="h-5 w-5 text-red-400" />
+          <p className="text-red-300 text-sm">
+            {networkStatus === 'offline' 
+              ? 'Brak połączenia z internetem' 
+              : 'Słabe połączenie internetowe - upload może być wolniejszy'
+            }
+          </p>
+        </div>
+      )}
+
       <div
         className={`relative border-2 border-dashed rounded-2xl p-12 text-center transition-all duration-300 ${
           dragOver
             ? 'border-purple-400 bg-purple-500/10 scale-105'
             : uploading
             ? 'border-blue-400 bg-blue-500/10'
+            : networkStatus === 'offline'
+            ? 'border-red-400 bg-red-500/10'
             : 'border-gray-400 bg-white/5 hover:bg-white/10'
         }`}
         onDragOver={handleDragOver}
@@ -108,19 +163,49 @@ export function VideoUploader({ onUpload, uploading, uploadProgress, error }: Vi
             </div>
             <div>
               <h3 className="text-xl font-semibold text-white mb-2">Wgrywanie do chmury...</h3>
-              <div className="w-full max-w-md mx-auto bg-gray-700 rounded-full h-3">
+              <div className="w-full max-w-md mx-auto bg-gray-700 rounded-full h-4 overflow-hidden">
                 <div
-                  className="bg-gradient-to-r from-purple-500 to-blue-500 h-3 rounded-full transition-all duration-300 ease-out"
+                  className={`bg-gradient-to-r ${getProgressColor()} h-4 rounded-full transition-all duration-500 ease-out relative`}
                   style={{ width: `${uploadProgress}%` }}
-                ></div>
+                >
+                  <div className="absolute inset-0 bg-white/20 animate-pulse"></div>
+                </div>
               </div>
-              <p className="text-gray-300 mt-2">{Math.round(uploadProgress)}%</p>
-              <p className="text-sm text-gray-400 mt-1">Wgrywanie do Oracle Cloud Storage...</p>
+              <p className="text-gray-300 mt-2 font-medium">{Math.round(uploadProgress)}%</p>
+              <p className="text-sm text-gray-400 mt-1">{getProgressMessage()}</p>
+              
+              {/* Network status during upload */}
+              <div className="flex items-center justify-center mt-2 space-x-2">
+                <Wifi className={`h-4 w-4 ${networkStatus === 'online' ? 'text-green-400' : 'text-yellow-400'}`} />
+                <span className="text-xs text-gray-400">
+                  {networkStatus === 'online' ? 'Połączenie stabilne' : 'Sprawdzanie połączenia...'}
+                </span>
+              </div>
+
+              {/* Progress stages */}
+              <div className="mt-4 flex justify-center space-x-2">
+                {[1, 2, 3, 4].map((stage) => (
+                  <div
+                    key={stage}
+                    className={`w-2 h-2 rounded-full transition-colors duration-300 ${
+                      uploadProgress > stage * 25 
+                        ? 'bg-green-400' 
+                        : uploadProgress > (stage - 1) * 25 
+                        ? 'bg-blue-400 animate-pulse' 
+                        : 'bg-gray-600'
+                    }`}
+                  />
+                ))}
+              </div>
             </div>
           </div>
         ) : (
           <div className="space-y-4">
-            <div className="w-20 h-20 mx-auto bg-gradient-to-r from-purple-500 to-blue-500 rounded-full flex items-center justify-center">
+            <div className={`w-20 h-20 mx-auto rounded-full flex items-center justify-center ${
+              networkStatus === 'offline' 
+                ? 'bg-gradient-to-r from-red-500 to-orange-500' 
+                : 'bg-gradient-to-r from-purple-500 to-blue-500'
+            }`}>
               <Upload className="h-10 w-10 text-white" />
             </div>
             <div>
@@ -136,13 +221,18 @@ export function VideoUploader({ onUpload, uploading, uploadProgress, error }: Vi
                 onChange={(e) => e.target.files && handleFileUpload(e.target.files)}
                 className="hidden"
                 id="video-upload"
+                disabled={networkStatus === 'offline'}
               />
               <label
                 htmlFor="video-upload"
-                className="inline-flex items-center px-6 py-3 bg-gradient-to-r from-purple-600 to-blue-600 text-white font-semibold rounded-lg hover:from-purple-700 hover:to-blue-700 transition-all duration-200 cursor-pointer"
+                className={`inline-flex items-center px-6 py-3 font-semibold rounded-lg transition-all duration-200 cursor-pointer ${
+                  networkStatus === 'offline'
+                    ? 'bg-gray-600 text-gray-400 cursor-not-allowed'
+                    : 'bg-gradient-to-r from-purple-600 to-blue-600 text-white hover:from-purple-700 hover:to-blue-700'
+                }`}
               >
                 <Upload className="h-5 w-5 mr-2" />
-                Wybierz plik
+                {networkStatus === 'offline' ? 'Brak połączenia' : 'Wybierz plik'}
               </label>
             </div>
             <div className="space-y-2">
@@ -155,18 +245,13 @@ export function VideoUploader({ onUpload, uploading, uploadProgress, error }: Vi
               <p className="text-sm text-green-400">
                 <strong>✓ Publiczne udostępnianie</strong> - Linki działają na wszystkich urządzeniach
               </p>
+              <p className="text-sm text-blue-400">
+                <strong>💡 Wskazówka:</strong> Duże pliki mogą potrzebować więcej czasu na upload
+              </p>
             </div>
           </div>
         )}
       </div>
-      
-      {/* Error Message */}
-      {error && (
-        <div className="mt-4 p-4 bg-red-500/10 border border-red-500/20 rounded-lg flex items-center space-x-3">
-          <AlertCircle className="h-5 w-5 text-red-400 flex-shrink-0" />
-          <p className="text-red-300 text-sm">{error}</p>
-        </div>
-      )}
     </div>
   )
 }
